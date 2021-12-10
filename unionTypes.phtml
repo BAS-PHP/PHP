@@ -1,0 +1,230 @@
+<?php
+
+/**
+ * Introduction:
+ *
+ * A “union type” accepts values of multiple different types
+ */
+
+/**
+ * Old way
+ *
+ * Type or null, using the special ?Type syntax
+ */
+class oldWay
+{
+    
+    /**
+     * - Type or null
+     */
+    private ?string $typeOrNull;
+    
+    /**
+     * - Array or null
+     */
+    private iterable $arrayOrNull;
+    
+    /**
+     * -  Declaring it in the docs
+     */
+    
+    /**
+     * @var int|float $number
+     */
+    private $number;
+    
+    /**
+     * @return int|float
+     */
+    public function getNumber() {
+        return $this->number;
+    }
+    
+    /**
+     * @param int|float $number
+     */
+    public function setNumber($number) {
+        $this->number = $number;
+    }
+}
+
+/**
+ * Current accepted way
+ */
+class newWay
+{
+    private int|float $number;
+    
+    public function getNumber(): int|float {
+        return $this->number;
+    }
+    
+    public function setNumber(int|float $number): void {
+        $this->number = $number;
+    }
+}
+
+/**
+ * Supported types
+ */
+class noWay{
+    
+    /**
+     * Nullable union types
+     */
+    private int|float|null $number; // Preferred ?(T1|T2)
+    
+    /**
+     * False pseudo-type
+     *
+     * Not preferred ways
+     * - false, false|null and ?false
+     */
+    public function getNumber(): false { //Preferred way int|false
+        return $this->number;
+    }
+    
+    /**
+     * Void type
+     */
+    public function setNumber(int|float $number): void|int { // Preferred way ?int
+        $this->number = $number;
+    }
+    
+    /**
+     * Duplicate and redundant types
+     */
+    function foo(): int|INT {} // Disallowed
+    function foo(): bool|false {} // Disallowed
+    
+    use A as B;
+    function foo(): A|B {} // Disallowed ('use' is part of name resolution)
+    
+    class_alias('X', 'Y');
+    function foo(): X|Y {} // Allowed (redundancy is only known at runtime)
+    
+    /**
+     * Type grammar
+     * type: simple_type
+     *     | '?' simple_type
+     *     | union_type
+     *     ;
+     *
+     * union_type: simple_type '|' simple_type
+     *           | union_type '|' simple_type
+     *           ;
+     *
+     * simple_type: 'false'          # only legal in unions
+     *            | 'null'           # only legal in unions
+     *            | 'bool'
+     *            | 'int'
+     *            | 'float'
+     *            | 'string'
+     *            | 'array'
+     *            | 'object'
+     *            | 'iterable'
+     *            | 'callable'       # not legal in property types
+     *            | 'self'
+     *            | 'parent'
+     *            | namespaced_name
+     *            ;
+     */
+}
+
+/**
+ * Variances
+ */
+
+/**
+ * Property types
+ */
+class A {}
+class B extends A {}
+
+class propertyTypes {
+    public A|B $prop; // Property A|B
+}
+class propertyTypes2 extends propertyTypes {
+    public A $prop; // Property A
+}
+
+/**
+ * Adding and removing union types
+ */
+class Test {
+    public function param1(int $param) {}
+    public function param2(int|float $param) {}
+    
+    public function return1(): int|float {}
+    public function return2(): int {}
+}
+
+class Test2 extends Test {
+    public function param1(int|float $param) {} // Allowed: Adding extra param type
+    public function param2(int $param) {}       // FORBIDDEN: Removing param type
+    
+    public function return1(): int {}           // Allowed: Removing return type
+    public function return2(): int|float {}     // FORBIDDEN: Adding extra return type
+}
+
+/**
+ * Variance of individual union members
+ */
+class C {}
+class D extends C {}
+
+class Test3 {
+    public function param1(D|string $param) {}
+    public function param2(C|string $param) {}
+    
+    public function return1(): C|string {}
+    public function return2(): D|string {}
+}
+
+class Test4 extends Test3 {
+    public function param1(C|string $param) {} // Allowed: Widening union member B -> A
+    public function param2(D|string $param) {} // FORBIDDEN: Restricting union member A -> B
+    
+    public function return1(): D|string {}     // Allowed: Restricting union member A -> B
+    public function return2(): C|string {}     // FORBIDDEN: Widening union member B -> A
+}
+
+/**
+ * Coercive typing mode
+ *
+ * When `strict_types` is not enabled boolean to an int|string argument, both 0 and “”
+ */
+
+/**
+ * Conversion Table
+ *
+ * Original type | 1st try     | 2nd try | 3rd try
+ * bool          | int         | float	 | string
+ * int	         | float	   | string	 | bool
+ * float	     | int	       | string  | bool
+ * string	     | int/float   | bool    |
+ * object	     | string      |         |
+ */
+?>
+// int|string
+42-- > 42               // exact type
+'42'-- > '42'           // exact type
+new ObjectWithToString-- > 'Result of __toString()'
+                        // object never compatible with int, fall back to string
+42.0-- > 42             // float compatible with int
+42.1-- > 42             // float compatible with int
+1e100-- > '1.0E+100'    // float too large for int type, fall back to string
+INF-- > 'INF'           // float too large for int type, fall back to string
+true-- > 1              // bool compatible with int
+[]-- > TypeError        // array not compatible with int or string
+
+// int|float|bool
+'45'-- > 45             // int numeric string
+'45.0'-- > 45.0         // float numeric string
+'45X'-- > 45 + Notice: Non well formed numeric string
+                        // int numeric string
+''-- > false            // not numeric string, fall back to bool
+'X'-- > true            // not numeric string, fall back to bool
+[]--> TypeError         // array not compatible with int, float or bool
+
+
